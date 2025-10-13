@@ -8,13 +8,11 @@ class Beam:
     def __init__(self, length, beam_type, supports):
         self.length = float(length)
         self.beam_type = beam_type
-        # For simply supported, supports = [pos1, pos2]. For cantilever, supports = [pos_fixed].
         self.supports = [float(s) for s in supports]
         self.loads = []
         self.reactions = {}
 
     def add_load(self, load_data):
-        # Input validation for loads
         load_type = load_data.get('type')
         if load_type == 'udl' or load_type == 'uvl':
             if load_data['start'] >= load_data['end']:
@@ -22,28 +20,28 @@ class Beam:
         self.loads.append(load_data)
 
     def _calculate_reactions(self):
-        if self.beam_type == "simply_supported":
+        # --- CHANGE IS HERE ---
+        # Overhang beams are calculated using the same statics as simply supported beams.
+        if self.beam_type == "simply_supported" or self.beam_type == "overhang":
             if len(self.supports) != 2:
-                raise ValueError("Simply supported beams require exactly two supports.")
+                raise ValueError("Simply supported or overhang beams require exactly two supports.")
             s1_pos, s2_pos = self.supports[0], self.supports[1]
             if s1_pos == s2_pos:
                 raise ValueError("Supports cannot be at the same position.")
             
             sum_force_y = 0
-            sum_moment_s1 = 0 # Sum of moments about the first support (s1_pos)
+            sum_moment_s1 = 0 
             
             for load in self.loads:
                 if load['type'] == 'point':
                     P, a = load['magnitude'], load['position']
                     sum_force_y += P
-                    # CORRECTED: Downward force creates a negative (clockwise) moment.
                     sum_moment_s1 -= P * (a - s1_pos)
                 elif load['type'] == 'udl':
                     w, start, end = load['magnitude'], load['start'], load['end']
                     eq_force = w * (end - start)
                     eq_pos = start + (end - start) / 2
                     sum_force_y += eq_force
-                    # CORRECTED: Downward UDL creates a negative (clockwise) moment.
                     sum_moment_s1 -= eq_force * (eq_pos - s1_pos)
                 elif load['type'] == 'uvl':
                     w, start, end = load['magnitude'], load['start'], load['end']
@@ -51,19 +49,15 @@ class Beam:
                     eq_force = 0.5 * w * length
                     eq_pos = start + (2/3) * length
                     sum_force_y += eq_force
-                    # CORRECTED: Downward UVL creates a negative (clockwise) moment.
                     sum_moment_s1 -= eq_force * (eq_pos - s1_pos)
                 elif load['type'] == 'moment':
-                    # A positive applied moment is counter-clockwise by convention.
                     sum_moment_s1 += load['magnitude']
 
-            # Solve for reactions: R2 * (s2_pos - s1_pos) + sum_moment_s1 = 0
             R2 = -sum_moment_s1 / (s2_pos - s1_pos)
             R1 = sum_force_y - R2
             self.reactions = {'R1': R1, 'R2': R2}
 
         elif self.beam_type == "cantilever":
-            # (Cantilever logic remains unchanged and is correct)
             if len(self.supports) != 1:
                 raise ValueError("Cantilever beams require exactly one fixed support.")
             fixed_pos = self.supports[0]
@@ -97,8 +91,6 @@ class Beam:
             self.reactions = {'R_fixed': R_fixed, 'M_fixed': M_fixed}
 
     def calculate_diagrams(self):
-        # This function does not need to be changed. Its logic is sound
-        # once it receives the correct reaction forces.
         self._calculate_reactions()
         x_points, shear_forces, bending_moments = [], [], []
         num_steps = int(self.length * 200) + 1
@@ -108,8 +100,9 @@ class Beam:
             shear = 0
             moment = 0
 
-            # Add reactions
-            if self.beam_type == "simply_supported":
+            # --- CHANGE IS HERE ---
+            # Added overhang to this condition
+            if self.beam_type == "simply_supported" or self.beam_type == "overhang":
                 s1_pos, s2_pos = self.supports
                 if x >= s1_pos: shear += self.reactions['R1']
                 if x >= s2_pos: shear += self.reactions['R2']
@@ -117,13 +110,10 @@ class Beam:
                 if x > s2_pos: moment += self.reactions['R2'] * (x - s2_pos)
             elif self.beam_type == "cantilever":
                 fixed_pos = self.supports[0]
-                # In cantilever, reactions apply at the fixed point
                 if x >= fixed_pos: 
                     shear += self.reactions['R_fixed']
                     moment += self.reactions['M_fixed'] + self.reactions['R_fixed'] * (x - fixed_pos)
 
-
-            # Subtract effects of loads
             for load in self.loads:
                 if load['type'] == 'point':
                     if x >= load['position']:
@@ -146,14 +136,12 @@ class Beam:
                         moment -= (w / (6 * length)) * dist**3
                 elif load['type'] == 'moment':
                     if x >= load['position']:
-                        # An applied moment creates a step change in the BMD but not the SFD
-                        moment += load['magnitude'] # Corrected convention for BMD calculation as well
+                        moment += load['magnitude'] 
 
             x_points.append(round(x, 4))
             shear_forces.append(round(shear, 4))
             bending_moments.append(round(moment, 4))
 
-        # Format reactions for display
         formatted_reactions = {k: round(v, 2) for k, v in self.reactions.items()}
 
         return {

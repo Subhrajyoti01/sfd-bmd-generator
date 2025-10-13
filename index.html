@@ -20,12 +20,8 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             margin: 0; 
             background-color: var(--page-bg);
-            /* CHANGE: Prevent the whole page from scrolling */
-            /*This change doesn't affect how your website looks or works.*/
             overflow: hidden; 
         }
-
-        /* --- Main Layout --- */
         .main-layout {
             display: grid;
             grid-template-columns: 420px 1fr;
@@ -34,27 +30,19 @@
             max-width: 1700px;
             margin: auto;
             align-items: start;
-            /* CHANGE: Make layout fill the screen height */
             height: 100vh;
-            box-sizing: border-box; /* Include padding in height calculation */
+            box-sizing: border-box;
         }
-
         .controls-panel, .display-panel {
-            /* CHANGE: Both panels now manage their own scrolling */
             overflow-y: auto;
-            /* CHANGE: Constrain height to prevent body scroll */
-            height: calc(100vh - 40px); /* 100vh minus top/bottom padding */
+            height: calc(100vh - 40px); 
             background: var(--panel-bg);
             padding: 25px;
             border-radius: 8px;
             box-shadow: var(--shadow);
         }
-
-        /* The .controls-panel no longer needs to be sticky */
-        
         h1 { text-align: center; color: #333; margin-top: 0; }
         h2 { border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 0; }
-        
         .input-group {
             margin-bottom: 25px;
             background: #fdfdfd;
@@ -62,7 +50,6 @@
             border-radius: 5px;
             border: 1px solid var(--border-color);
         }
-
         label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
         input[type="number"], select { 
             width: 100%; 
@@ -72,7 +59,6 @@
             border-radius: 4px; 
             margin-bottom: 10px; 
         }
-        
         button { 
             padding: 12px 25px; 
             border: none; 
@@ -85,19 +71,16 @@
         }
         .add-load-btn { background-color: var(--primary-blue); }
         .add-load-btn:hover { background-color: var(--hover-blue); }
-        
         #calculateBtn { 
             background-color: var(--green); 
             width: 100%; 
             padding: 15px;
             font-size: 1.2em;
-            /* Make the button stick to the bottom of the left panel */
             position: sticky;
             bottom: 0;
             left: 0;
         }
         #calculateBtn:hover { background-color: var(--hover-green); }
-
         .load-entry { 
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -110,21 +93,18 @@
         .load-entry-header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
         .load-entry-header strong { font-size: 1.1em; }
         .load-entry-header button { background-color: #dc3545; padding: 5px 10px; font-size: 12px; }
-
         .chart-container { margin-top: 30px; }
         #results { text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #333; padding: 20px; background: #fff; border-radius: 8px; border: 1px solid var(--border-color); }
         #error { color: #d93025; text-align: center; margin-top: 15px; font-weight: bold; }
         #beamVisualizer { border: 1px solid #ccc; width: 100%; background-color: #fff; border-radius: 5px; }
-
-        /* --- Responsive Design --- */
         @media (max-width: 900px) {
-            body { overflow: auto; } /* Re-enable body scroll on small screens */
+            body { overflow: auto; }
             .main-layout {
-                grid-template-columns: 1fr; /* Stack columns */
+                grid-template-columns: 1fr;
                 height: auto;
             }
             .controls-panel, .display-panel {
-                height: auto; /* Let panels grow naturally */
+                height: auto;
                 overflow-y: visible;
             }
         }
@@ -141,10 +121,11 @@
             <label for="beamType">Beam Type</label>
             <select id="beamType">
                 <option value="simply_supported">Simply Supported</option>
+                <option value="overhang">Overhang</option>
                 <option value="cantilever">Cantilever</option>
             </select>
             <label for="beamLength">Beam Length (m)</label>
-            <input type="number" id="beamLength" value="10">
+            <input type="number" id="beamLength" value="12">
             <div id="supports-container"></div>
         </div>
 
@@ -189,8 +170,6 @@
 
 
 <script>
-    // --- NO CHANGES NEEDED IN JAVASCRIPT ---
-
     let sfdChartInstance = null;
     let bmdChartInstance = null;
     const beamTypeSelect = document.getElementById('beamType');
@@ -206,14 +185,20 @@
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
-        if (beamType === 'simply_supported') {
+        
+        // --- CHANGE IS HERE ---
+        if (beamType === 'simply_supported' || beamType === 'overhang') {
+            let defaultS2 = (beamType === 'overhang') ? '8' : '12'; // Default value for overhang support
+            let defaultLength = (beamType === 'overhang') ? '12' : '10';
+            document.getElementById('beamLength').value = defaultLength;
             container.innerHTML = `
                 <label for="support1">Support 1 Position (m)</label>
-                <input type="number" class="support-pos" id="support1" value="0">
+                <input type="number" class="support-pos" id="support1" value="2">
                 <label for="support2">Support 2 Position (m)</label>
-                <input type="number" class="support-pos" id="support2" value="10">
+                <input type="number" class="support-pos" id="support2" value="${defaultS2}">
             `;
         } else if (beamType === 'cantilever') {
+            document.getElementById('beamLength').value = '10';
             container.innerHTML = `
                 <label for="support1">Fixed Support Position (m)</label>
                 <input type="number" class="support-pos" id="support1" value="0">
@@ -223,6 +208,7 @@
     }
 
     function addLoad() {
+        // This function remains the same
         const type = document.getElementById('loadTypeSelector').value;
         const container = document.getElementById('loads-container');
         const entry = document.createElement('div');
@@ -238,7 +224,7 @@
         if (type === 'point') {
             html += `
                 <div><label>Magnitude (kN):</label><input type="number" class="magnitude" value="10"></div>
-                <div><label>Position (m):</label><input type="number" class="position" value="5"></div>
+                <div><label>Position (m):</label><input type="number" class="position" value="6"></div>
             `;
         } else if (type === 'udl' || type === 'uvl') {
             html += `
@@ -257,6 +243,7 @@
         drawBeam();
     }
     
+    // All other JavaScript functions (drawBeam, calculate, etc.) remain unchanged.
     function drawBeam() {
         const canvas = document.getElementById('beamVisualizer');
         const ctx = canvas.getContext('2d');
@@ -359,7 +346,6 @@
             }
         });
     }
-
     function drawArrow(ctx, fromx, fromy, tox, toy, inverted, headlen = 10){
         const angle = Math.atan2(toy - fromy, tox - fromx);
         ctx.beginPath();
@@ -378,15 +364,12 @@
         ctx.lineWidth = 2;
         ctx.stroke();
     }
-
     async function calculate() {
         document.getElementById('results').innerText = 'Calculating...';
         document.getElementById('error').innerText = '';
-
         const beamLength = document.getElementById('beamLength').value;
         const beamType = document.getElementById('beamType').value;
         const supports = Array.from(document.querySelectorAll('.support-pos')).map(el => el.value);
-
         const loads = [];
         const loadEntries = document.querySelectorAll('.load-entry');
         loadEntries.forEach(entry => {
@@ -402,46 +385,36 @@
             }
             loads.push(load);
         });
-
         const data = { beam_length: beamLength, beam_type: beamType, supports, loads };
-        
         try {
-            const response = await fetch('https://sfd-bmd-generator-1.onrender.com/calculate', {
+            const response = await fetch('https://sfd-bmd-backend.onrender.com/calculate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Calculation failed on server');
             }
-
             const result = await response.json();
             displayResults(result);
-
         } catch (error) {
             document.getElementById('results').innerText = '';
             document.getElementById('error').innerText = `Error: ${error.message}`;
         }
     }
-
     function displayResults(data) {
         const { x_points, shear_forces, bending_moments, reactions } = data;
-        
         const resultsDiv = document.getElementById('results');
         let reactionsText = "Support Reactions: " + Object.entries(reactions)
             .map(([key, value]) => `${key} = ${value} ${key.startsWith('M') ? 'kNm' : 'kN'}`)
             .join(', ');
         resultsDiv.innerText = reactionsText;
-
         if (sfdChartInstance) sfdChartInstance.destroy();
         if (bmdChartInstance) bmdChartInstance.destroy();
-        
         sfdChartInstance = new Chart(document.getElementById('sfdChart').getContext('2d'), createChartConfig(x_points, shear_forces, 'Shear Force (kN)', 'rgb(255, 99, 132)'));
         bmdChartInstance = new Chart(document.getElementById('bmdChart').getContext('2d'), createChartConfig(x_points, bending_moments, 'Bending Moment (kNm)', 'rgb(54, 162, 235)', false));
     }
-
     function createChartConfig(labels, data, title, color, invertY = false) {
         return {
             type: 'line',
@@ -467,7 +440,6 @@
             }
         };
     }
-
     window.onload = () => {
         setupSupports();
         addLoad(); 
