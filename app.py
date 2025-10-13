@@ -2,10 +2,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-# --- THIS IS THE CORRECTED LINE ---
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 class Beam:
+    # ... (The __init__, add_load, and _calculate_reactions methods are unchanged) ...
     def __init__(self, length, beam_type, supports):
         self.length = float(length)
         self.beam_type = beam_type
@@ -139,16 +139,35 @@ class Beam:
             shear_forces.append(round(shear, 4))
             bending_moments.append(round(moment, 4))
 
+        # --- NEW: CALCULATE MAX/MIN VALUES ---
+        max_shear = max(shear_forces)
+        min_shear = min(shear_forces)
+        max_moment = max(bending_moments) # Max positive moment (sagging)
+        min_moment = min(bending_moments) # Max negative moment (hogging)
+
+        # Find the location of these values
+        max_shear_pos = x_points[shear_forces.index(max_shear)]
+        min_shear_pos = x_points[shear_forces.index(min_shear)]
+        max_moment_pos = x_points[bending_moments.index(max_moment)]
+        min_moment_pos = x_points[bending_moments.index(min_moment)]
+
         formatted_reactions = {k: round(v, 2) for k, v in self.reactions.items()}
 
         return {
             "x_points": x_points,
             "shear_forces": shear_forces,
             "bending_moments": bending_moments,
-            "reactions": formatted_reactions
+            "reactions": formatted_reactions,
+            # --- NEW: SEND MAX/MIN DATA TO FRONTEND ---
+            "summary": {
+                "max_shear": {"value": round(max_shear, 2), "position": max_shear_pos},
+                "min_shear": {"value": round(min_shear, 2), "position": min_shear_pos},
+                "max_moment": {"value": round(max_moment, 2), "position": max_moment_pos},
+                "min_moment": {"value": round(min_moment, 2), "position": min_moment_pos}
+            }
         }
 
-
+# ... (The @app.route('/calculate') and main block are unchanged) ...
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
