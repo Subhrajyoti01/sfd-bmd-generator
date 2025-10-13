@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive SFD & BMD Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
 
     <style>
-        /* ... (The existing CSS is unchanged) ... */
         :root {
             --panel-bg: white;
             --page-bg: #f4f7f9;
@@ -97,12 +95,9 @@
         .load-entry-header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
         .load-entry-header strong { font-size: 1.1em; }
         .load-entry-header button { background-color: #dc3545; padding: 5px 10px; font-size: 12px; }
-        .chart-container { margin-top: 30px; position: relative; }
         #results { text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #333; padding: 20px; background: #fff; border-radius: 8px; border: 1px solid var(--border-color); }
         #error { color: #d93025; text-align: center; margin-top: 15px; font-weight: bold; }
         #beamVisualizer { border: 1px solid #ccc; width: 100%; background-color: #fff; border-radius: 5px; }
-        
-        /* NEW: Styles for the summary box */
         .summary-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -116,7 +111,11 @@
             padding: 15px;
         }
         .summary-box h3 { margin-top: 0; }
-
+        .chart-container { 
+            margin-top: 30px; 
+            position: relative;
+        }
+        
         @media (max-width: 900px) {
             body { overflow: auto; }
             .main-layout {
@@ -195,7 +194,6 @@
 
 
 <script>
-    // ... (Global variables and event listeners are unchanged) ...
     let sfdChartInstance = null;
     let bmdChartInstance = null;
     const beamTypeSelect = document.getElementById('beamType');
@@ -207,19 +205,16 @@
             drawBeam();
         }
     });
-
-    // ... (setupSupports, addLoad, drawBeam, drawArrow, calculate functions are mostly unchanged) ...
+    
+    // The rest of the JavaScript is unchanged from the previous version...
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
-        
         if (beamType === 'simply_supported' || beamType === 'overhang') {
             let s1 = (beamType === 'overhang') ? '2' : '0';
             let s2 = (beamType === 'overhang') ? '8' : '10';
             let len = (beamType === 'overhang') ? '12' : '10';
-            
             document.getElementById('beamLength').value = len;
-
             container.innerHTML = `
                 <label for="support1">Support 1 Position (m)</label>
                 <input type="number" class="support-pos" id="support1" value="${s1}">
@@ -419,18 +414,13 @@
             document.getElementById('error').innerText = `Error: ${error.message}`;
         }
     }
-
-    // --- UPDATED displayResults function ---
     function displayResults(data) {
         const { x_points, shear_forces, bending_moments, reactions, summary } = data;
-        
         const resultsDiv = document.getElementById('results');
         let reactionsText = "Support Reactions: " + Object.entries(reactions)
             .map(([key, value]) => `${key} = ${value} ${key.startsWith('M') ? 'kNm' : 'kN'}`)
             .join(', ');
         resultsDiv.innerText = reactionsText;
-
-        // --- NEW: Display Max/Min Values ---
         const sfdSummaryDiv = document.getElementById('sfdSummary');
         sfdSummaryDiv.innerHTML = `
             <h3>Shear Force Summary</h3>
@@ -438,16 +428,13 @@
             <p><b>Min Shear:</b> ${summary.min_shear.value} kN at ${summary.min_shear.position} m</p>
         `;
         const bmdSummaryDiv = document.getElementById('bmdSummary');
-bmdSummaryDiv.innerHTML = `
-    <h3>Bending Moment Summary</h3>
-    <p><b>Max Positive Moment (Sagging):</b> ${summary.max_moment.value} kNm at ${summary.max_moment.position} m</p>
-    <p><b>Max Negative Moment (Hogging):</b> ${summary.min_moment.value} kNm at ${summary.min_moment.position} m</p>
-`;
-
-
+        bmdSummaryDiv.innerHTML = `
+            <h3>Bending Moment Summary</h3>
+            <p><b>Max Positive Moment (Sagging):</b> ${summary.max_moment.value} kNm at ${summary.max_moment.position} m</p>
+            <p><b>Max Negative Moment (Hogging):</b> ${summary.min_moment.value} kNm at ${summary.min_moment.position} m</p>
+        `;
         if (sfdChartInstance) sfdChartInstance.destroy();
         if (bmdChartInstance) bmdChartInstance.destroy();
-        
         sfdChartInstance = new Chart(document.getElementById('sfdChart').getContext('2d'), createChartConfig(
             x_points, shear_forces, 'Shear Force (kN)', 'rgb(255, 99, 132)', false, summary.max_shear, summary.min_shear
         ));
@@ -456,7 +443,7 @@ bmdSummaryDiv.innerHTML = `
         ));
     }
 
-    // --- UPDATED createChartConfig function ---
+    // UPDATED: createChartConfig function with zoom removed
     function createChartConfig(labels, data, title, color, invertY = false, maxVal, minVal) {
         return {
             type: 'line',
@@ -482,12 +469,8 @@ bmdSummaryDiv.innerHTML = `
                         grid: { zeroLineColor: '#000', zeroLineWidth: 2 }
                     }
                 },
-                // --- NEW: Zoom and Annotation Plugins ---
                 plugins: {
-                    zoom: {
-                        pan: { enabled: true, mode: 'x' },
-                        zoom: { wheel: { enabled: true }, mode: 'x' }
-                    },
+                    // REMOVED: Zoom plugin configuration
                     annotation: {
                         annotations: {
                             maxLine: {
@@ -522,8 +505,6 @@ bmdSummaryDiv.innerHTML = `
             }
         };
     }
-
-    // --- ONLOAD INITIALIZATION ---
     window.onload = () => {
         setupSupports();
         addLoad(); 
