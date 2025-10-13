@@ -403,7 +403,7 @@
         });
         const data = { beam_length: beamLength, beam_type: beamType, supports, loads };
         try {
-            const response = await fetch('https://sfd-bmd-backend.onrender.com/calculate', {
+            const response = await fetch('https://sfd-bmd-generator-1.onrender.com/calculate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
