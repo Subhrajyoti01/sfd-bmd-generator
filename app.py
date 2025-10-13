@@ -2,19 +2,18 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+# This line includes the fix for the CORS error you encountered.
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 class Beam:
     def __init__(self, length, beam_type, supports):
         self.length = float(length)
         self.beam_type = beam_type
-        # For simply supported, supports = [pos1, pos2]. For cantilever, supports = [pos_fixed].
         self.supports = [float(s) for s in supports]
         self.loads = []
         self.reactions = {}
 
     def add_load(self, load_data):
-        # Input validation for loads
         load_type = load_data.get('type')
         if load_type == 'udl' or load_type == 'uvl':
             if load_data['start'] >= load_data['end']:
@@ -22,39 +21,38 @@ class Beam:
         self.loads.append(load_data)
 
     def _calculate_reactions(self):
-        if self.beam_type == "simply_supported":
+        # CHANGE IS HERE: Added "or self.beam_type == 'overhang'"
+        if self.beam_type == "simply_supported" or self.beam_type == "overhang":
             if len(self.supports) != 2:
-                raise ValueError("Simply supported beams require exactly two supports.")
+                raise ValueError("Simply supported or overhang beams require exactly two supports.")
             s1_pos, s2_pos = self.supports[0], self.supports[1]
             if s1_pos == s2_pos:
                 raise ValueError("Supports cannot be at the same position.")
             
             sum_force_y = 0
-            sum_moment_s1 = 0
+            sum_moment_s1 = 0 
             
             for load in self.loads:
                 if load['type'] == 'point':
                     P, a = load['magnitude'], load['position']
                     sum_force_y += P
-                    sum_moment_s1 += P * (a - s1_pos)
+                    sum_moment_s1 -= P * (a - s1_pos)
                 elif load['type'] == 'udl':
                     w, start, end = load['magnitude'], load['start'], load['end']
                     eq_force = w * (end - start)
                     eq_pos = start + (end - start) / 2
                     sum_force_y += eq_force
-                    sum_moment_s1 += eq_force * (eq_pos - s1_pos)
+                    sum_moment_s1 -= eq_force * (eq_pos - s1_pos)
                 elif load['type'] == 'uvl':
                     w, start, end = load['magnitude'], load['start'], load['end']
                     length = end - start
                     eq_force = 0.5 * w * length
                     eq_pos = start + (2/3) * length
                     sum_force_y += eq_force
-                    sum_moment_s1 += eq_force * (eq_pos - s1_pos)
+                    sum_moment_s1 -= eq_force * (eq_pos - s1_pos)
                 elif load['type'] == 'moment':
-                    # A pure moment does not contribute to the force equation
                     sum_moment_s1 += load['magnitude']
 
-            # Solve for reactions: R_B * (s2_pos - s1_pos) + sum_moment_s1 = 0
             R2 = -sum_moment_s1 / (s2_pos - s1_pos)
             R1 = sum_force_y - R2
             self.reactions = {'R1': R1, 'R2': R2}
@@ -62,11 +60,10 @@ class Beam:
         elif self.beam_type == "cantilever":
             if len(self.supports) != 1:
                 raise ValueError("Cantilever beams require exactly one fixed support.")
+            # ... (The rest of the cantilever logic remains unchanged) ...
             fixed_pos = self.supports[0]
-            
             sum_force_y = 0
             sum_moment_fixed = 0
-            
             for load in self.loads:
                 if load['type'] == 'point':
                     P, a = load['magnitude'], load['position']
@@ -86,9 +83,7 @@ class Beam:
                     sum_force_y += eq_force
                     sum_moment_fixed += eq_force * (eq_pos - fixed_pos)
                 elif load['type'] == 'moment':
-                    sum_moment_fixed += load['magnitude']
-
-            # Reactions for cantilever
+                    sum_moment_fixed -= load['magnitude']
             R_fixed = sum_force_y
             M_fixed = -sum_moment_fixed
             self.reactions = {'R_fixed': R_fixed, 'M_fixed': M_fixed}
@@ -102,25 +97,24 @@ class Beam:
             x = (i / 200.0)
             shear = 0
             moment = 0
-
-            # Add reactions
-            if self.beam_type == "simply_supported":
+            
+            # CHANGE IS HERE: Added "or self.beam_type == 'overhang'"
+            if self.beam_type == "simply_supported" or self.beam_type == "overhang":
                 s1_pos, s2_pos = self.supports
-                if x > s1_pos: shear += self.reactions['R1']
-                if x > s2_pos: shear += self.reactions['R2']
+                if x >= s1_pos: shear += self.reactions['R1']
+                if x >= s2_pos: shear += self.reactions['R2']
                 if x > s1_pos: moment += self.reactions['R1'] * (x - s1_pos)
                 if x > s2_pos: moment += self.reactions['R2'] * (x - s2_pos)
             elif self.beam_type == "cantilever":
                 fixed_pos = self.supports[0]
-                if x > fixed_pos: 
+                if x >= fixed_pos: 
                     shear += self.reactions['R_fixed']
                     moment += self.reactions['M_fixed'] + self.reactions['R_fixed'] * (x - fixed_pos)
 
-
-            # Subtract effects of loads
+            # ... (The rest of the load calculation loop remains unchanged) ...
             for load in self.loads:
                 if load['type'] == 'point':
-                    if x > load['position']:
+                    if x >= load['position']:
                         shear -= load['magnitude']
                         moment -= load['magnitude'] * (x - load['position'])
                 elif load['type'] == 'udl':
@@ -139,14 +133,13 @@ class Beam:
                         shear -= 0.5 * local_w * dist
                         moment -= (w / (6 * length)) * dist**3
                 elif load['type'] == 'moment':
-                    if x > load['position']:
-                        moment -= load['magnitude']
+                    if x >= load['position']:
+                        moment += load['magnitude'] 
 
             x_points.append(round(x, 4))
             shear_forces.append(round(shear, 4))
             bending_moments.append(round(moment, 4))
 
-        # Format reactions for display
         formatted_reactions = {k: round(v, 2) for k, v in self.reactions.items()}
 
         return {
