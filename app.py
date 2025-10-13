@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-# This line includes the fix for the CORS error you encountered.
+# --- THIS IS THE CORRECTED LINE ---
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 class Beam:
@@ -21,7 +21,6 @@ class Beam:
         self.loads.append(load_data)
 
     def _calculate_reactions(self):
-        # CHANGE IS HERE: Added "or self.beam_type == 'overhang'"
         if self.beam_type == "simply_supported" or self.beam_type == "overhang":
             if len(self.supports) != 2:
                 raise ValueError("Simply supported or overhang beams require exactly two supports.")
@@ -60,10 +59,11 @@ class Beam:
         elif self.beam_type == "cantilever":
             if len(self.supports) != 1:
                 raise ValueError("Cantilever beams require exactly one fixed support.")
-            # ... (The rest of the cantilever logic remains unchanged) ...
             fixed_pos = self.supports[0]
+            
             sum_force_y = 0
             sum_moment_fixed = 0
+            
             for load in self.loads:
                 if load['type'] == 'point':
                     P, a = load['magnitude'], load['position']
@@ -84,6 +84,7 @@ class Beam:
                     sum_moment_fixed += eq_force * (eq_pos - fixed_pos)
                 elif load['type'] == 'moment':
                     sum_moment_fixed -= load['magnitude']
+
             R_fixed = sum_force_y
             M_fixed = -sum_moment_fixed
             self.reactions = {'R_fixed': R_fixed, 'M_fixed': M_fixed}
@@ -97,8 +98,7 @@ class Beam:
             x = (i / 200.0)
             shear = 0
             moment = 0
-            
-            # CHANGE IS HERE: Added "or self.beam_type == 'overhang'"
+
             if self.beam_type == "simply_supported" or self.beam_type == "overhang":
                 s1_pos, s2_pos = self.supports
                 if x >= s1_pos: shear += self.reactions['R1']
@@ -111,7 +111,6 @@ class Beam:
                     shear += self.reactions['R_fixed']
                     moment += self.reactions['M_fixed'] + self.reactions['R_fixed'] * (x - fixed_pos)
 
-            # ... (The rest of the load calculation loop remains unchanged) ...
             for load in self.loads:
                 if load['type'] == 'point':
                     if x >= load['position']:
