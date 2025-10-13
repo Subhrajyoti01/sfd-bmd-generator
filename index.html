@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced SFD & BMD Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --panel-bg: white;
+            --page-bg: #f4f7f9;
+            --border-color: #e0e0e0;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+            --primary-blue: #007bff;
+            --hover-blue: #0056b3;
+            --green: #28a745;
+            --hover-green: #218838;
+        }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            margin: 0; 
+            background-color: var(--page-bg);
+            /* CHANGE: Prevent the whole page from scrolling */
+            overflow: hidden; 
+        }
+
+        /* --- Main Layout --- */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 30px;
+            padding: 20px;
+            max-width: 1700px;
+            margin: auto;
+            align-items: start;
+            /* CHANGE: Make layout fill the screen height */
+            height: 100vh;
+            box-sizing: border-box; /* Include padding in height calculation */
+        }
+
+        .controls-panel, .display-panel {
+            /* CHANGE: Both panels now manage their own scrolling */
+            overflow-y: auto;
+            /* CHANGE: Constrain height to prevent body scroll */
+            height: calc(100vh - 40px); /* 100vh minus top/bottom padding */
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        /* The .controls-panel no longer needs to be sticky */
+        
+        h1 { text-align: center; color: #333; margin-top: 0; }
+        h2 { border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 0; }
+        
+        .input-group {
+            margin-bottom: 25px;
+            background: #fdfdfd;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="number"], select { 
+            width: 100%; 
+            padding: 10px; 
+            box-sizing: border-box; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            margin-bottom: 10px; 
+        }
+        
+        button { 
+            padding: 12px 25px; 
+            border: none; 
+            color: white; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            margin: 5px;
+            transition: background-color 0.2s ease;
+        }
+        .add-load-btn { background-color: var(--primary-blue); }
+        .add-load-btn:hover { background-color: var(--hover-blue); }
+        
+        #calculateBtn { 
+            background-color: var(--green); 
+            width: 100%; 
+            padding: 15px;
+            font-size: 1.2em;
+            /* Make the button stick to the bottom of the left panel */
+            position: sticky;
+            bottom: 0;
+            left: 0;
+        }
+        #calculateBtn:hover { background-color: var(--hover-green); }
+
+        .load-entry { 
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 15px;
+            align-items: center; 
+            margin-bottom: 15px; 
+            border-bottom: 1px solid #eee; 
+            padding-bottom: 15px; 
+        }
+        .load-entry-header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+        .load-entry-header strong { font-size: 1.1em; }
+        .load-entry-header button { background-color: #dc3545; padding: 5px 10px; font-size: 12px; }
+
+        .chart-container { margin-top: 30px; }
+        #results { text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #333; padding: 20px; background: #fff; border-radius: 8px; border: 1px solid var(--border-color); }
+        #error { color: #d93025; text-align: center; margin-top: 15px; font-weight: bold; }
+        #beamVisualizer { border: 1px solid #ccc; width: 100%; background-color: #fff; border-radius: 5px; }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 900px) {
+            body { overflow: auto; } /* Re-enable body scroll on small screens */
+            .main-layout {
+                grid-template-columns: 1fr; /* Stack columns */
+                height: auto;
+            }
+            .controls-panel, .display-panel {
+                height: auto; /* Let panels grow naturally */
+                overflow-y: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-layout">
+    <div class="controls-panel">
+        <h1>SFD & BMD Generator</h1>
+        
+        <div class="input-group">
+            <h2>Beam Properties</h2>
+            <label for="beamType">Beam Type</label>
+            <select id="beamType">
+                <option value="simply_supported">Simply Supported</option>
+                <option value="cantilever">Cantilever</option>
+            </select>
+            <label for="beamLength">Beam Length (m)</label>
+            <input type="number" id="beamLength" value="10">
+            <div id="supports-container"></div>
+        </div>
+
+        <div class="input-group">
+            <h2>Add Loads</h2>
+            <div style="display: flex; gap: 10px;">
+                <select id="loadTypeSelector" style="flex: 1;">
+                    <option value="point">Point Load (kN)</option>
+                    <option value="udl">UDL (kN/m)</option>
+                    <option value="uvl">UVL (kN/m)</option>
+                    <option value="moment">Moment (kNm)</option>
+                </select>
+                <button class="add-load-btn" onclick="addLoad()">Add</button>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <h2>Current Loads</h2>
+            <div id="loads-container"></div>
+        </div>
+
+        <button id="calculateBtn" onclick="calculate()">Calculate & Generate Diagrams</button>
+    </div>
+
+    <div class="display-panel">
+        <div class="input-group">
+            <h2>Live Beam Preview</h2>
+            <canvas id="beamVisualizer" height="150"></canvas>
+        </div>
+
+        <div id="results"></div>
+        <div id="error"></div>
+        
+        <div class="chart-container">
+            <canvas id="sfdChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="bmdChart"></canvas>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    // --- NO CHANGES NEEDED IN JAVASCRIPT ---
+
+    let sfdChartInstance = null;
+    let bmdChartInstance = null;
+    const beamTypeSelect = document.getElementById('beamType');
+    const beamLengthInput = document.getElementById('beamLength');
+
+    beamTypeSelect.addEventListener('change', setupSupports);
+    document.addEventListener('input', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+            drawBeam();
+        }
+    });
+
+    function setupSupports() {
+        const container = document.getElementById('supports-container');
+        const beamType = beamTypeSelect.value;
+        if (beamType === 'simply_supported') {
+            container.innerHTML = `
+                <label for="support1">Support 1 Position (m)</label>
+                <input type="number" class="support-pos" id="support1" value="0">
+                <label for="support2">Support 2 Position (m)</label>
+                <input type="number" class="support-pos" id="support2" value="10">
+            `;
+        } else if (beamType === 'cantilever') {
+            container.innerHTML = `
+                <label for="support1">Fixed Support Position (m)</label>
+                <input type="number" class="support-pos" id="support1" value="0">
+            `;
+        }
+        drawBeam();
+    }
+
+    function addLoad() {
+        const type = document.getElementById('loadTypeSelector').value;
+        const container = document.getElementById('loads-container');
+        const entry = document.createElement('div');
+        entry.className = 'load-entry';
+        entry.dataset.loadType = type;
+
+        let html = `
+            <div class="load-entry-header">
+                <strong>${type.toUpperCase()}</strong>
+                <button onclick="this.closest('.load-entry').remove(); drawBeam();">Remove</button>
+            </div>
+        `;
+        if (type === 'point') {
+            html += `
+                <div><label>Magnitude (kN):</label><input type="number" class="magnitude" value="10"></div>
+                <div><label>Position (m):</label><input type="number" class="position" value="5"></div>
+            `;
+        } else if (type === 'udl' || type === 'uvl') {
+            html += `
+                <div><label>Magnitude (kN/m):</label><input type="number" class="magnitude" value="5"></div>
+                <div><label>Start (m):</label><input type="number" class="start" value="2"></div>
+                <div><label>End (m):</label><input type="number" class="end" value="8"></div>
+            `;
+        } else if (type === 'moment') {
+            html += `
+                <div><label>Magnitude (kNm):</label><input type="number" class="magnitude" value="20"></div>
+                <div><label>Position (m):</label><input type="number" class="position" value="4"></div>
+            `;
+        }
+        entry.innerHTML = html;
+        container.appendChild(entry);
+        drawBeam();
+    }
+    
+    function drawBeam() {
+        const canvas = document.getElementById('beamVisualizer');
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const beamY = h * 0.6;
+        const margin = 30;
+        const beamLength = parseFloat(beamLengthInput.value) || 10;
+        const scale = (w - 2 * margin) / beamLength;
+
+        const toPx = (pos) => margin + pos * scale;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#666';
+        ctx.font = '12px Arial';
+
+        ctx.beginPath();
+        ctx.moveTo(margin, beamY);
+        ctx.lineTo(w - margin, beamY);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
+
+        const beamType = beamTypeSelect.value;
+        const supportPositions = Array.from(document.querySelectorAll('.support-pos')).map(el => parseFloat(el.value));
+        
+        if (beamType === 'cantilever') {
+            const x = toPx(supportPositions[0]);
+            ctx.fillRect(x - 5, beamY - 15, 5, 30);
+            ctx.beginPath();
+            for(let i = 0; i < 4; i++) {
+                ctx.moveTo(x - 5, beamY - 15 + i*10);
+                ctx.lineTo(x - 10, beamY - 10 + i*10);
+            }
+            ctx.stroke();
+
+        } else {
+            supportPositions.forEach((pos, i) => {
+                const x = toPx(pos);
+                ctx.beginPath();
+                ctx.moveTo(x, beamY);
+                ctx.lineTo(x - 10, beamY + 15);
+                ctx.lineTo(x + 10, beamY + 15);
+                ctx.closePath();
+                ctx.fillStyle = '#007bff';
+                ctx.fill();
+            });
+        }
+        
+        const loadEntries = document.querySelectorAll('.load-entry');
+        loadEntries.forEach(entry => {
+            const type = entry.dataset.loadType;
+            const mag = parseFloat(entry.querySelector('.magnitude')?.value) || 0;
+            
+            if (type === 'point') {
+                const pos = parseFloat(entry.querySelector('.position')?.value);
+                const x = toPx(pos);
+                drawArrow(ctx, x, beamY - 40, x, beamY, mag < 0);
+                ctx.fillText(`${mag} kN`, x + 5, beamY - 30);
+            } else if (type === 'udl') {
+                const start = parseFloat(entry.querySelector('.start')?.value);
+                const end = parseFloat(entry.querySelector('.end')?.value);
+                const x1 = toPx(start);
+                const x2 = toPx(end);
+                ctx.fillStyle = 'rgba(255, 99, 132, 0.4)';
+                ctx.fillRect(x1, beamY - 30, x2 - x1, 30);
+                for(let i=x1; i<=x2; i+=15) drawArrow(ctx, i, beamY-30, i, beamY, mag < 0, 5);
+                ctx.fillStyle = '#333';
+                ctx.fillText(`${mag} kN/m`, (x1 + x2)/2 - 15, beamY - 40);
+            } else if (type === 'uvl') {
+                const start = parseFloat(entry.querySelector('.start')?.value);
+                const end = parseFloat(entry.querySelector('.end')?.value);
+                const x1 = toPx(start);
+                const x2 = toPx(end);
+                ctx.beginPath();
+                ctx.moveTo(x1, beamY);
+                ctx.lineTo(x2, beamY - 40);
+                ctx.lineTo(x2, beamY);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(255, 159, 64, 0.4)';
+                ctx.fill();
+                ctx.fillStyle = '#333';
+                ctx.fillText(`${mag} kN/m`, x2 + 5, beamY - 30);
+            } else if (type === 'moment') {
+                const pos = parseFloat(entry.querySelector('.position')?.value);
+                const x = toPx(pos);
+                ctx.beginPath();
+                ctx.arc(x, beamY, 15, Math.PI, 0);
+                ctx.strokeStyle = '#8a2be2';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x+15, beamY);
+                ctx.lineTo(x+10, beamY-5);
+                ctx.lineTo(x+20, beamY-5);
+                ctx.closePath();
+                ctx.fillStyle = '#8a2be2';
+                ctx.fill();
+                ctx.fillText(`${mag} kNm`, x + 20, beamY);
+            }
+        });
+    }
+
+    function drawArrow(ctx, fromx, fromy, tox, toy, inverted, headlen = 10){
+        const angle = Math.atan2(toy - fromy, tox - fromx);
+        ctx.beginPath();
+        ctx.moveTo(fromx, fromy);
+        ctx.lineTo(tox, toy);
+        if(inverted){
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+        } else {
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+        }
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    async function calculate() {
+        document.getElementById('results').innerText = 'Calculating...';
+        document.getElementById('error').innerText = '';
+
+        const beamLength = document.getElementById('beamLength').value;
+        const beamType = document.getElementById('beamType').value;
+        const supports = Array.from(document.querySelectorAll('.support-pos')).map(el => el.value);
+
+        const loads = [];
+        const loadEntries = document.querySelectorAll('.load-entry');
+        loadEntries.forEach(entry => {
+            const type = entry.dataset.loadType;
+            const magnitude = parseFloat(entry.querySelector('.magnitude')?.value);
+            let load = { type, magnitude };
+
+            if (type === 'point' || type === 'moment') {
+                load.position = parseFloat(entry.querySelector('.position')?.value);
+            } else {
+                load.start = parseFloat(entry.querySelector('.start')?.value);
+                load.end = parseFloat(entry.querySelector('.end')?.value);
+            }
+            loads.push(load);
+        });
+
+        const data = { beam_length: beamLength, beam_type: beamType, supports, loads };
+        
+        try {
+            const response = await fetch('http://127.0.0.1:5000/calculate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Calculation failed on server');
+            }
+
+            const result = await response.json();
+            displayResults(result);
+
+        } catch (error) {
+            document.getElementById('results').innerText = '';
+            document.getElementById('error').innerText = `Error: ${error.message}`;
+        }
+    }
+
+    function displayResults(data) {
+        const { x_points, shear_forces, bending_moments, reactions } = data;
+        
+        const resultsDiv = document.getElementById('results');
+        let reactionsText = "Support Reactions: " + Object.entries(reactions)
+            .map(([key, value]) => `${key} = ${value} ${key.startsWith('M') ? 'kNm' : 'kN'}`)
+            .join(', ');
+        resultsDiv.innerText = reactionsText;
+
+        if (sfdChartInstance) sfdChartInstance.destroy();
+        if (bmdChartInstance) bmdChartInstance.destroy();
+        
+        sfdChartInstance = new Chart(document.getElementById('sfdChart').getContext('2d'), createChartConfig(x_points, shear_forces, 'Shear Force (kN)', 'rgb(255, 99, 132)'));
+        bmdChartInstance = new Chart(document.getElementById('bmdChart').getContext('2d'), createChartConfig(x_points, bending_moments, 'Bending Moment (kNm)', 'rgb(54, 162, 235)', false));
+    }
+
+    function createChartConfig(labels, data, title, color, invertY = false) {
+        return {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: title,
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color.replace(')', ', 0.5)').replace('rgb', 'rgba'),
+                    borderWidth: 2, pointRadius: 0, fill: 'origin'
+                }]
+            },
+            options: {
+                scales: {
+                    x: { title: { display: true, text: 'Position (m)' }, ticks: { maxTicksLimit: 20 } },
+                    y: { 
+                        title: { display: true, text: title }, 
+                        reverse: invertY,
+                        grid: { zeroLineColor: '#000', zeroLineWidth: 2 }
+                    }
+                }
+            }
+        };
+    }
+
+    window.onload = () => {
+        setupSupports();
+        addLoad(); 
+    };
+</script>
+
+</body>
+</html>
