@@ -139,15 +139,15 @@
             background-color: var(--hover-gray);
         }
         #zoom-toggle-btn {
-            position: sticky; /* Make it sticky */
-            top: 0px; /* Stick to the top edge */
-            float: right; /* Position it to the right */
-            z-index: 30; /* Ensure it's above scrolling content */
+            position: sticky;
+            top: 0px;
+            float: right;
+            z-index: 30;
             padding: 8px 12px;
             font-size: 12px;
             background-color: var(--gray);
             border: 1px solid #5a6268;
-            margin-bottom: 10px; /* Add space below button */
+            margin-bottom: 10px;
         }
         #zoom-toggle-btn.zoom-enabled {
              background-color: var(--primary-blue);
@@ -162,7 +162,7 @@
             width: fit-content;
             margin-left: auto;
             margin-right: auto;
-            clear: both; /* Clear the float from the zoom button */
+            clear: both;
         }
          #export-btn:hover {
              background-color: var(--hover-blue);
@@ -333,42 +333,51 @@
         const combinedCanvas = document.createElement('canvas');
         const ctx = combinedCanvas.getContext('2d');
 
-        // Determine dimensions - use chart width for alignment
-        const chartWidth = sfdCanvas.width; // Assume SFD and BMD are same width
-        const chartArea = sfdChartInstance.chartArea; // Get chart area coordinates
-        const chartDrawWidth = chartArea.right - chartArea.left; // Actual width of the graph area
+        // --- Refined Alignment Calculations ---
+        const padding = 20; // General padding around elements
+        const chartWidth = sfdCanvas.width; // Use chart's full canvas width
+        const chartArea = sfdChartInstance.chartArea; // Get SFD chart's draw area coordinates
+        const chartDrawX = chartArea.left; // Left edge of the SFD chart's drawing area
+        const chartDrawWidth = chartArea.right - chartArea.left; // Width of the SFD chart's drawing area
 
-        const beamMargin = 30; // Margin used in drawBeam
-        const beamDrawWidth = beamCanvas.width - 2 * beamMargin;
+        const beamMargin = 30; // Margin used when drawing the beam preview
+        const beamImageWidth = beamCanvas.width - 2 * beamMargin; // The actual width of the beam image within its canvas
 
-        const scaleFactor = chartDrawWidth / beamDrawWidth;
+        // Calculate scaling factor to match beam width to chart draw width
+        const scaleFactor = chartDrawWidth / beamImageWidth;
         const beamScaledHeight = beamCanvas.height * scaleFactor;
 
-        const padding = 20; // Padding around the edges and between beam/SFD
-        const totalHeight = beamScaledHeight + sfdCanvas.height + bmdCanvas.height + padding * 2; // Reduced padding
-        combinedCanvas.width = chartWidth + padding * 2; // Use chart width + padding
-        combinedCanvas.height = totalHeight;
+        // Calculate total dimensions
+        combinedCanvas.width = chartWidth + padding * 2; // Use full chart width + padding
+        combinedCanvas.height = beamScaledHeight + sfdCanvas.height + bmdCanvas.height + padding * 2; // Reduced vertical padding
 
-        // Fill background with white
+        // Fill background
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
 
-        // Calculate offset to align beam preview with chart area
-        const beamOffsetX = chartArea.left + padding;
-
-        // Draw scaled and aligned beam preview
+        // --- Draw with precise alignment ---
         let currentY = padding;
-        ctx.drawImage(beamCanvas, beamOffsetX, currentY, chartDrawWidth, beamScaledHeight);
-        currentY += beamScaledHeight + padding; // Add padding after beam preview
 
-        // Draw SFD chart (aligned naturally by width)
+        // Draw scaled beam preview, aligning its *drawing area* with the chart's *drawing area*
+        // Source rectangle (sx, sy, sWidth, sHeight): The part of the beam image to draw (the beam itself, excluding margins)
+        // Destination rectangle (dx, dy, dWidth, dHeight): Where to draw it on the combined canvas
+        ctx.drawImage(
+            beamCanvas,
+            beamMargin, 0,                      // sx, sy (Start capturing from the beam margin)
+            beamImageWidth, beamCanvas.height,  // sWidth, sHeight (Capture only the beam part)
+            chartDrawX + padding, currentY,     // dx, dy (Position using chart area left + padding)
+            chartDrawWidth, beamScaledHeight    // dWidth, dHeight (Draw at scaled size)
+        );
+        currentY += beamScaledHeight; // Move down for the next image, no extra padding
+
+        // Draw SFD chart (its left edge naturally aligns)
         ctx.drawImage(sfdCanvas, padding, currentY);
-        currentY += sfdCanvas.height; // NO padding between SFD and BMD
+        currentY += sfdCanvas.height; // No padding between charts
 
         // Draw BMD chart directly below SFD
         ctx.drawImage(bmdCanvas, padding, currentY);
 
-        // Create download link
+        // Trigger download
         const link = document.createElement('a');
         link.download = 'beam_diagrams.jpg';
         link.href = combinedCanvas.toDataURL('image/jpeg', 0.9);
