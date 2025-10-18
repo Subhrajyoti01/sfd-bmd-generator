@@ -333,51 +333,63 @@
         const combinedCanvas = document.createElement('canvas');
         const ctx = combinedCanvas.getContext('2d');
 
-        // --- Refined Alignment Calculations ---
-        const padding = 20; // General padding around elements
-        const chartWidth = sfdCanvas.width; // Use chart's full canvas width
-        const chartArea = sfdChartInstance.chartArea; // Get SFD chart's draw area coordinates
-        const chartDrawX = chartArea.left; // Left edge of the SFD chart's drawing area
-        const chartDrawWidth = chartArea.right - chartArea.left; // Width of the SFD chart's drawing area
+        const globalPadding = 20; // Padding around the entire exported image
 
-        const beamMargin = 30; // Margin used when drawing the beam preview
-        const beamImageWidth = beamCanvas.width - 2 * beamMargin; // The actual width of the beam image within its canvas
+        // Get actual chart drawing area dimensions from the SFD chart
+        const sfdChartArea = sfdChartInstance.chartArea;
+        const chartContentXStart = sfdChartArea.left; // X-coordinate where the chart's data drawing begins
+        const chartContentWidth = sfdChartArea.right - sfdChartArea.left; // Width of the chart's data drawing area
 
-        // Calculate scaling factor to match beam width to chart draw width
-        const scaleFactor = chartDrawWidth / beamImageWidth;
-        const beamScaledHeight = beamCanvas.height * scaleFactor;
+        // The beam's drawing function uses a hardcoded margin of 30px on each side.
+        const beamRenderMargin = 30;
+        const beamActualContentWidth = beamCanvas.width - (2 * beamRenderMargin); // The width of the "beam" part of the beamCanvas
 
-        // Calculate total dimensions
-        combinedCanvas.width = chartWidth + padding * 2; // Use full chart width + padding
-        combinedCanvas.height = beamScaledHeight + sfdCanvas.height + bmdCanvas.height + padding * 2; // Reduced vertical padding
+        // Calculate scaling factor for the beam preview to match the chart content width
+        const beamScaleFactor = chartContentWidth / beamActualContentWidth;
+        const beamScaledHeight = beamCanvas.height * beamScaleFactor;
 
-        // Fill background
+        // Determine the total width of the combined canvas
+        // This should be the full width of the chart canvases, plus global padding on each side.
+        const combinedWidth = sfdCanvas.width + (2 * globalPadding);
+
+        // Determine the total height of the combined canvas
+        // BeamScaledHeight + SFD height + BMD height + padding above beam + padding between beam/SFD + padding below BMD
+        const combinedHeight = beamScaledHeight + sfdCanvas.height + bmdCanvas.height + (3 * globalPadding); // Increased padding slightly for clarity
+
+
+        combinedCanvas.width = combinedWidth;
+        combinedCanvas.height = combinedHeight;
+
+        // Fill background with white
         ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+        ctx.fillRect(0, 0, combinedWidth, combinedHeight);
 
-        // --- Draw with precise alignment ---
-        let currentY = padding;
+        let currentY = globalPadding;
 
-        // Draw scaled beam preview, aligning its *drawing area* with the chart's *drawing area*
-        // Source rectangle (sx, sy, sWidth, sHeight): The part of the beam image to draw (the beam itself, excluding margins)
-        // Destination rectangle (dx, dy, dWidth, dHeight): Where to draw it on the combined canvas
-        ctx.drawImage(
-            beamCanvas,
-            beamMargin, 0,                      // sx, sy (Start capturing from the beam margin)
-            beamImageWidth, beamCanvas.height,  // sWidth, sHeight (Capture only the beam part)
-            chartDrawX + padding, currentY,     // dx, dy (Position using chart area left + padding)
-            chartDrawWidth, beamScaledHeight    // dWidth, dHeight (Draw at scaled size)
-        );
-        currentY += beamScaledHeight; // Move down for the next image, no extra padding
+        // --- Draw the scaled and aligned Beam Preview ---
+        // Source rectangle on beamCanvas:
+        const sX = beamRenderMargin; // Start X from where the beam line actually begins
+        const sY = 0;
+        const sWidth = beamActualContentWidth; // The actual width of the beam graphic
+        const sHeight = beamCanvas.height;
 
-        // Draw SFD chart (its left edge naturally aligns)
-        ctx.drawImage(sfdCanvas, padding, currentY);
-        currentY += sfdCanvas.height; // No padding between charts
+        // Destination rectangle on combinedCanvas:
+        const dX = globalPadding + chartContentXStart; // Align with the chart's data area start
+        const dY = currentY;
+        const dWidth = chartContentWidth; // Scale to match chart's data area width
+        const dHeight = beamScaledHeight;
 
-        // Draw BMD chart directly below SFD
-        ctx.drawImage(bmdCanvas, padding, currentY);
+        ctx.drawImage(beamCanvas, sX, sY, sWidth, sHeight, dX, dY, dWidth, dHeight);
+        currentY += beamScaledHeight + globalPadding; // Advance Y for the next chart, with some padding
 
-        // Trigger download
+        // --- Draw SFD Chart ---
+        ctx.drawImage(sfdCanvas, globalPadding, currentY);
+        currentY += sfdCanvas.height; // No padding between SFD and BMD
+
+        // --- Draw BMD Chart ---
+        ctx.drawImage(bmdCanvas, globalPadding, currentY);
+
+        // Create and trigger download
         const link = document.createElement('a');
         link.download = 'beam_diagrams.jpg';
         link.href = combinedCanvas.toDataURL('image/jpeg', 0.9);
@@ -385,7 +397,6 @@
     }
 
 
-    // ... (setupSupports, addLoad, drawBeam, drawArrow, calculate... unchanged) ...
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
@@ -449,7 +460,7 @@
         const w = canvas.width;
         const h = canvas.height;
         const beamY = h * 0.6;
-        const margin = 30; // Keep this margin consistent
+        const margin = 30; // Consistent margin for drawing the beam
         const beamLength = parseFloat(beamLengthInput.value) || 10;
         const scale = (w - 2 * margin) / beamLength;
         const toPx = (pos) => margin + pos * scale;
@@ -561,7 +572,7 @@
         exportButton.disabled = true;
         const beamLength = document.getElementById('beamLength').value;
         const beamType = document.getElementById('beamType').value;
-        const supports = Array.from(document.querySelectorAll('.support-pos')).map(el => el.value);
+        const supports = Array.from(document.querySelectorAll('.support-pos')).map(el => parseFloat(el.value));
         const loads = [];
         const loadEntries = document.querySelectorAll('.load-entry');
         loadEntries.forEach(entry => {
