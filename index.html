@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
     <title>Interactive SFD & BMD Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
@@ -237,12 +237,20 @@
     let bmdChartInstance = null;
     const beamTypeSelect = document.getElementById('beamType');
     const beamLengthInput = document.getElementById('beamLength');
+    
+    // --- NEW: Grab the zoom checkbox ---
+    const zoomCheck = document.getElementById('enableZoomCheck');
 
     beamTypeSelect.addEventListener('change', setupSupports);
     document.addEventListener('input', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
             drawBeam();
         }
+    });
+
+    // --- NEW: Add an event listener to the checkbox ---
+    zoomCheck.addEventListener('change', () => {
+        toggleZoom(zoomCheck.checked);
     });
 
     function resetZoom(chartType) {
@@ -253,6 +261,18 @@
         }
     }
     
+    // --- NEW: Function to instantly update chart zoom options ---
+    function toggleZoom(isZoomEnabled) {
+        if (sfdChartInstance) {
+            sfdChartInstance.options.plugins.zoom.zoom.wheel.enabled = isZoomEnabled;
+            sfdChartInstance.update('none'); // 'none' updates without animation
+        }
+        if (bmdChartInstance) {
+            bmdChartInstance.options.plugins.zoom.zoom.wheel.enabled = isZoomEnabled;
+            bmdChartInstance.update('none');
+        }
+    }
+
     // ... (setupSupports, addLoad, drawBeam, drawArrow, calculate... all unchanged) ...
     function setupSupports() {
         const container = document.getElementById('supports-container');
@@ -509,10 +529,10 @@
         ));
     }
 
-    // --- UPDATED: createChartConfig function ---
+    // This function is unchanged from the previous version,
+    // as it already reads the checkbox state.
     function createChartConfig(data, title, color, invertY = false, maxVal, minVal, pointLoadAnnotations) {
         
-        // --- NEW: Read the state of the zoom checkbox ---
         const isZoomEnabled = document.getElementById('enableZoomCheck').checked;
         
         const allAnnotations = {
@@ -559,7 +579,6 @@
                 }]
             },
             options: {
-                // --- NEW: Set interaction mode for tooltips on shaded areas ---
                 interaction: {
                     mode: 'index',
                     intersect: false
@@ -580,11 +599,10 @@
                     }
                 },
                 plugins: {
-                    // --- NEW: Set zoom based on the checkbox ---
                     zoom: {
                         pan: { enabled: true, mode: 'x', threshold: 5 },
                         zoom: { 
-                            wheel: { enabled: isZoomEnabled }, // This is the change
+                            wheel: { enabled: isZoomEnabled },
                             mode: 'x' 
                         }
                     },
