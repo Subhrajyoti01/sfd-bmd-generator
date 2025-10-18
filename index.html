@@ -45,7 +45,7 @@
             padding: 25px;
             border-radius: 8px;
             box-shadow: var(--shadow);
-            position: relative; /* Keep relative for general positioning */
+            position: relative; /* Needed for positioning buttons */
         }
         h1 { text-align: center; color: #333; margin-top: 0; }
         h2 { border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 0; }
@@ -138,8 +138,6 @@
         .reset-zoom-btn:hover {
             background-color: var(--hover-gray);
         }
-
-        /* --- UPDATED: Zoom Toggle Button Style --- */
         #zoom-toggle-btn {
             position: sticky; /* Make it sticky */
             top: 0px; /* Stick to the top edge */
@@ -164,6 +162,7 @@
             width: fit-content;
             margin-left: auto;
             margin-right: auto;
+            clear: both; /* Clear the float from the zoom button */
         }
          #export-btn:hover {
              background-color: var(--hover-blue);
@@ -181,10 +180,9 @@
                 overflow-y: visible;
                 position: static;
             }
-             /* --- UPDATED: Disable sticky and float on mobile --- */
              #zoom-toggle-btn {
                  position: static;
-                 float: none; /* Let it flow normally */
+                 float: none;
                  display: block;
                  width: fit-content;
                  margin: 15px auto;
@@ -269,7 +267,6 @@
 
 
 <script>
-    // --- All JavaScript is unchanged ---
     let sfdChartInstance = null;
     let bmdChartInstance = null;
     const beamTypeSelect = document.getElementById('beamType');
@@ -277,6 +274,7 @@
     let isZoomEnabledGlobally = false;
     const zoomToggleButton = document.getElementById('zoom-toggle-btn');
     const exportButton = document.getElementById('export-btn');
+
 
     beamTypeSelect.addEventListener('change', setupSupports);
     document.addEventListener('input', (e) => {
@@ -321,6 +319,7 @@
         }
     }
 
+    // --- UPDATED: exportImage function ---
     function exportImage() {
         const beamCanvas = document.getElementById('beamVisualizer');
         const sfdCanvas = document.getElementById('sfdChart');
@@ -333,22 +332,43 @@
 
         const combinedCanvas = document.createElement('canvas');
         const ctx = combinedCanvas.getContext('2d');
-        const padding = 20;
-        const totalHeight = beamCanvas.height + sfdCanvas.height + bmdCanvas.height + padding * 4;
-        const maxWidth = Math.max(beamCanvas.width, sfdCanvas.width, bmdCanvas.width);
-        combinedCanvas.width = maxWidth + padding * 2;
+
+        // Determine dimensions - use chart width for alignment
+        const chartWidth = sfdCanvas.width; // Assume SFD and BMD are same width
+        const chartArea = sfdChartInstance.chartArea; // Get chart area coordinates
+        const chartDrawWidth = chartArea.right - chartArea.left; // Actual width of the graph area
+
+        const beamMargin = 30; // Margin used in drawBeam
+        const beamDrawWidth = beamCanvas.width - 2 * beamMargin;
+
+        const scaleFactor = chartDrawWidth / beamDrawWidth;
+        const beamScaledHeight = beamCanvas.height * scaleFactor;
+
+        const padding = 20; // Padding around the edges and between beam/SFD
+        const totalHeight = beamScaledHeight + sfdCanvas.height + bmdCanvas.height + padding * 2; // Reduced padding
+        combinedCanvas.width = chartWidth + padding * 2; // Use chart width + padding
         combinedCanvas.height = totalHeight;
 
+        // Fill background with white
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
 
+        // Calculate offset to align beam preview with chart area
+        const beamOffsetX = chartArea.left + padding;
+
+        // Draw scaled and aligned beam preview
         let currentY = padding;
-        ctx.drawImage(beamCanvas, padding, currentY);
-        currentY += beamCanvas.height + padding;
+        ctx.drawImage(beamCanvas, beamOffsetX, currentY, chartDrawWidth, beamScaledHeight);
+        currentY += beamScaledHeight + padding; // Add padding after beam preview
+
+        // Draw SFD chart (aligned naturally by width)
         ctx.drawImage(sfdCanvas, padding, currentY);
-        currentY += sfdCanvas.height + padding;
+        currentY += sfdCanvas.height; // NO padding between SFD and BMD
+
+        // Draw BMD chart directly below SFD
         ctx.drawImage(bmdCanvas, padding, currentY);
 
+        // Create download link
         const link = document.createElement('a');
         link.download = 'beam_diagrams.jpg';
         link.href = combinedCanvas.toDataURL('image/jpeg', 0.9);
@@ -356,6 +376,7 @@
     }
 
 
+    // ... (setupSupports, addLoad, drawBeam, drawArrow, calculate... unchanged) ...
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
@@ -419,7 +440,7 @@
         const w = canvas.width;
         const h = canvas.height;
         const beamY = h * 0.6;
-        const margin = 30;
+        const margin = 30; // Keep this margin consistent
         const beamLength = parseFloat(beamLengthInput.value) || 10;
         const scale = (w - 2 * margin) / beamLength;
         const toPx = (pos) => margin + pos * scale;
