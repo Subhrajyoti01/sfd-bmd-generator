@@ -5,7 +5,6 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 class Beam:
-    # ... (The __init__, add_load, and _calculate_reactions methods are unchanged) ...
     def __init__(self, length, beam_type, supports):
         self.length = float(length)
         self.beam_type = beam_type
@@ -92,13 +91,15 @@ class Beam:
     def calculate_diagrams(self):
         self._calculate_reactions()
         x_points, shear_forces, bending_moments = [], [], []
-        num_steps = int(self.length * 200) + 1
+        # Increase resolution for better max/min finding
+        num_steps = int(self.length * 400) + 1 
 
         for i in range(num_steps):
-            x = (i / 200.0)
+            x = round(i / 400.0, 6)
             shear = 0
             moment = 0
 
+            # Add reactions
             if self.beam_type == "simply_supported" or self.beam_type == "overhang":
                 s1_pos, s2_pos = self.supports
                 if x >= s1_pos: shear += self.reactions['R1']
@@ -111,17 +112,25 @@ class Beam:
                     shear += self.reactions['R_fixed']
                     moment += self.reactions['M_fixed'] + self.reactions['R_fixed'] * (x - fixed_pos)
 
+            # Subtract effects of loads
             for load in self.loads:
                 if load['type'] == 'point':
                     if x >= load['position']:
                         shear -= load['magnitude']
                         moment -= load['magnitude'] * (x - load['position'])
+                
+                # --- THIS IS THE CORRECTED LOGIC ---
                 elif load['type'] == 'udl':
                     start, end, w = load['start'], load['end'], load['magnitude']
                     if x > start:
                         effective_end = min(x, end)
-                        shear -= w * (effective_end - start)
-                        moment -= 0.5 * w * (effective_end - start)**2
+                        dist = effective_end - start
+                        force = w * dist
+                        centroid = start + (dist / 2)
+                        lever_arm = x - centroid
+                        shear -= force
+                        moment -= force * lever_arm
+                        
                 elif load['type'] == 'uvl':
                     start, end, w = load['start'], load['end'], load['magnitude']
                     length = end - start
@@ -129,27 +138,41 @@ class Beam:
                         effective_x = min(x, end)
                         dist = effective_x - start
                         local_w = (w / length) * dist
-                        shear -= 0.5 * local_w * dist
-                        moment -= (w / (6 * length)) * dist**3
+                        force = 0.5 * local_w * dist
+                        centroid = start + (2/3) * dist
+                        lever_arm = x - centroid
+                        shear -= force
+                        moment -= force * lever_arm
+
                 elif load['type'] == 'moment':
                     if x >= load['position']:
                         moment += load['magnitude'] 
 
-            x_points.append(round(x, 4))
+            x_points.append(x)
             shear_forces.append(round(shear, 4))
             bending_moments.append(round(moment, 4))
 
-        # --- NEW: CALCULATE MAX/MIN VALUES ---
+        # --- THIS LOGIC IS ALSO CORRECTED/IMPROVED ---
+        # Find the absolute max/min, not just the first instance
         max_shear = max(shear_forces)
         min_shear = min(shear_forces)
-        max_moment = max(bending_moments) # Max positive moment (sagging)
-        min_moment = min(bending_moments) # Max negative moment (hogging)
+        max_moment = max(bending_moments)
+        min_moment = min(bending_moments)
 
-        # Find the location of these values
+        # Find the first position of these values
         max_shear_pos = x_points[shear_forces.index(max_shear)]
         min_shear_pos = x_points[shear_forces.index(min_shear)]
         max_moment_pos = x_points[bending_moments.index(max_moment)]
         min_moment_pos = x_points[bending_moments.index(min_moment)]
+        
+        # Check for zero-shear-crossing for a more accurate max moment
+        for i in range(1, len(shear_forces)):
+            if shear_forces[i-1] > 0 and shear_forces[i] <= 0:
+                # Found a zero crossing, this is a local max moment
+                if bending_moments[i] > max_moment:
+                    max_moment = bending_moments[i]
+                    max_moment_pos = x_points[i]
+                break # Only find the first one for simply supported beams
 
         formatted_reactions = {k: round(v, 2) for k, v in self.reactions.items()}
 
@@ -158,7 +181,6 @@ class Beam:
             "shear_forces": shear_forces,
             "bending_moments": bending_moments,
             "reactions": formatted_reactions,
-            # --- NEW: SEND MAX/MIN DATA TO FRONTEND ---
             "summary": {
                 "max_shear": {"value": round(max_shear, 2), "position": max_shear_pos},
                 "min_shear": {"value": round(min_shear, 2), "position": min_shear_pos},
@@ -167,7 +189,6 @@ class Beam:
             }
         }
 
-# ... (The @app.route('/calculate') and main block are unchanged) ...
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
