@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive SFD & BMD Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
 
     <style>
@@ -115,7 +116,25 @@
             margin-top: 30px; 
             position: relative;
         }
-        
+        .chart-container canvas {
+             cursor: grab;
+        }
+        .chart-container canvas:active {
+            cursor: grabbing;
+        }
+        .reset-zoom-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            padding: 5px 10px;
+            font-size: 12px;
+            background-color: #6c757d;
+        }
+        .reset-zoom-btn:hover {
+            background-color: #5a6268;
+        }
+
         @media (max-width: 900px) {
             body { overflow: auto; }
             .main-layout {
@@ -184,9 +203,11 @@
         </div>
 
         <div class="chart-container">
+            <button class="reset-zoom-btn" onclick="resetZoom('sfd')">Reset Zoom</button>
             <canvas id="sfdChart"></canvas>
         </div>
         <div class="chart-container">
+            <button class="reset-zoom-btn" onclick="resetZoom('bmd')">Reset Zoom</button>
             <canvas id="bmdChart"></canvas>
         </div>
     </div>
@@ -205,8 +226,15 @@
             drawBeam();
         }
     });
+
+    function resetZoom(chartType) {
+        if (chartType === 'sfd' && sfdChartInstance) {
+            sfdChartInstance.resetZoom();
+        } else if (chartType === 'bmd' && bmdChartInstance) {
+            bmdChartInstance.resetZoom();
+        }
+    }
     
-    // The rest of the JavaScript is unchanged from the previous version...
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
@@ -376,13 +404,16 @@
         ctx.lineWidth = 2;
         ctx.stroke();
     }
+
+    // --- UPDATED: calculate function ---
     async function calculate() {
         document.getElementById('results').innerText = 'Calculating...';
         document.getElementById('error').innerText = '';
         const beamLength = document.getElementById('beamLength').value;
         const beamType = document.getElementById('beamType').value;
         const supports = Array.from(document.querySelectorAll('.support-pos')).map(el => el.value);
-        const loads = [];
+
+        const loads = []; // We will build the loads array to pass to displayResults
         const loadEntries = document.querySelectorAll('.load-entry');
         loadEntries.forEach(entry => {
             const type = entry.dataset.loadType;
@@ -396,7 +427,9 @@
             }
             loads.push(load);
         });
+        
         const data = { beam_length: beamLength, beam_type: beamType, supports, loads };
+        
         try {
             const response = await fetch('https://sfd-bmd-generator-1.onrender.com/calculate', {
                 method: 'POST',
@@ -408,19 +441,26 @@
                 throw new Error(errorData.error || 'Calculation failed on server');
             }
             const result = await response.json();
-            displayResults(result);
+            
+            // --- NEW: Pass the 'loads' array to displayResults ---
+            displayResults(result, loads);
+            
         } catch (error) {
             document.getElementById('results').innerText = '';
             document.getElementById('error').innerText = `Error: ${error.message}`;
         }
     }
-    function displayResults(data) {
+
+    // --- UPDATED: displayResults function ---
+    function displayResults(data, loads) { // Added 'loads' as a parameter
         const { x_points, shear_forces, bending_moments, reactions, summary } = data;
+        
         const resultsDiv = document.getElementById('results');
         let reactionsText = "Support Reactions: " + Object.entries(reactions)
             .map(([key, value]) => `${key} = ${value} ${key.startsWith('M') ? 'kNm' : 'kN'}`)
             .join(', ');
         resultsDiv.innerText = reactionsText;
+        
         const sfdSummaryDiv = document.getElementById('sfdSummary');
         sfdSummaryDiv.innerHTML = `
             <h3>Shear Force Summary</h3>
@@ -433,35 +473,100 @@
             <p><b>Max Positive Moment (Sagging):</b> ${summary.max_moment.value} kNm at ${summary.max_moment.position} m</p>
             <p><b>Max Negative Moment (Hogging):</b> ${summary.min_moment.value} kNm at ${summary.min_moment.position} m</p>
         `;
+
+        // --- NEW: Reformat data for a linear axis ---
+        // This is key for getting "better numbers" on the scale
+        const sfdData = x_points.map((x, i) => ({ x: x, y: shear_forces[i] }));
+        const bmdData = x_points.map((x, i) => ({ x: x, y: bending_moments[i] }));
+        
+        // --- NEW: Build annotations for point loads ---
+        const pointLoadAnnotations = {};
+        loads.filter(load => load.type === 'point').forEach((load, i) => {
+            pointLoadAnnotations[`pointLoad${i}`] = {
+                type: 'line',
+                mode: 'vertical',
+                scaleID: 'x',
+                value: load.position,
+                borderColor: 'grey',
+                borderWidth: 2,
+                borderDash: [6, 6],
+                label: {
+                    content: `${load.magnitude} kN`,
+                    enabled: true,
+                    position: 'top'
+                }
+            };
+        });
+
         if (sfdChartInstance) sfdChartInstance.destroy();
         if (bmdChartInstance) bmdChartInstance.destroy();
+        
         sfdChartInstance = new Chart(document.getElementById('sfdChart').getContext('2d'), createChartConfig(
-            x_points, shear_forces, 'Shear Force (kN)', 'rgb(255, 99, 132)', false, summary.max_shear, summary.min_shear
+            sfdData, 'Shear Force (kN)', 'rgb(255, 99, 132)', false, summary.max_shear, summary.min_shear, pointLoadAnnotations
         ));
         bmdChartInstance = new Chart(document.getElementById('bmdChart').getContext('2d'), createChartConfig(
-            x_points, bending_moments, 'Bending Moment (kNm)', 'rgb(54, 162, 235)', false, summary.max_moment, summary.min_moment
+            bmdData, 'Bending Moment (kNm)', 'rgb(54, 162, 235)', false, summary.max_moment, summary.min_moment, pointLoadAnnotations
         ));
     }
 
-    // UPDATED: createChartConfig function with zoom removed
-    function createChartConfig(labels, data, title, color, invertY = false, maxVal, minVal) {
+    // --- UPDATED: createChartConfig function ---
+    function createChartConfig(data, title, color, invertY = false, maxVal, minVal, pointLoadAnnotations) {
+        
+        // Merge max/min annotations with point load annotations
+        const allAnnotations = {
+            ...pointLoadAnnotations, // Add the point load lines
+            maxLine: {
+                type: 'line',
+                yMin: maxVal.value,
+                yMax: maxVal.value,
+                borderColor: 'rgb(75, 192, 192)',
+                borderWidth: 2,
+                borderDash: [6, 6],
+                label: {
+                    content: `Max: ${maxVal.value} at ${maxVal.position}m`,
+                    enabled: true,
+                    position: 'start'
+                }
+            },
+            minLine: {
+                type: 'line',
+                yMin: minVal.value,
+                yMax: minVal.value,
+                borderColor: 'rgb(192, 75, 75)',
+                borderWidth: 2,
+                borderDash: [6, 6],
+                label: {
+                    content: `Min: ${minVal.value} at ${minVal.position}m`,
+                    enabled: true,
+                    position: 'start'
+                }
+            }
+        };
+        
         return {
             type: 'line',
             data: {
-                labels: labels,
+                // 'labels' is no longer used
                 datasets: [{
                     label: title,
-                    data: data,
+                    data: data, // Data is now an array of {x, y} objects
                     borderColor: color,
                     backgroundColor: color.replace(')', ', 0.5)').replace('rgb', 'rgba'),
-                    borderWidth: 2, pointRadius: 0, fill: 'origin'
+                    borderWidth: 2, 
+                    pointRadius: 0, 
+                    fill: 'origin'
                 }]
             },
             options: {
                 scales: {
+                    // --- NEW: x-axis is now 'linear' ---
                     x: { 
+                        type: 'linear', // This generates "better numbers"
                         title: { display: true, text: 'Position (m)' }, 
-                        ticks: { autoSkip: true, maxTicksLimit: 20 } 
+                        ticks: { 
+                            autoSkip: true, 
+                            maxTicksLimit: 20 // Suggests a max number of ticks
+                        } 
                     },
                     y: { 
                         title: { display: true, text: title }, 
@@ -470,36 +575,12 @@
                     }
                 },
                 plugins: {
-                    // REMOVED: Zoom plugin configuration
+                    zoom: {
+                        pan: { enabled: true, mode: 'x', threshold: 5 },
+                        zoom: { wheel: { enabled: true }, mode: 'x' }
+                    },
                     annotation: {
-                        annotations: {
-                            maxLine: {
-                                type: 'line',
-                                yMin: maxVal.value,
-                                yMax: maxVal.value,
-                                borderColor: 'rgb(75, 192, 192)',
-                                borderWidth: 2,
-                                borderDash: [6, 6],
-                                label: {
-                                    content: `Max: ${maxVal.value} at ${maxVal.position}m`,
-                                    enabled: true,
-                                    position: 'start'
-                                }
-                            },
-                            minLine: {
-                                type: 'line',
-                                yMin: minVal.value,
-                                yMax: minVal.value,
-                                borderColor: 'rgb(192, 75, 75)',
-                                borderWidth: 2,
-                                borderDash: [6, 6],
-                                label: {
-                                    content: `Min: ${minVal.value} at ${minVal.position}m`,
-                                    enabled: true,
-                                    position: 'start'
-                                }
-                            }
-                        }
+                        annotations: allAnnotations // Use the merged annotations
                     }
                 }
             }
