@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive SFD & BMD Generator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
@@ -144,6 +144,17 @@
         .reset-zoom-btn:hover {
             background-color: #5a6268;
         }
+        
+        /* --- NEW CSS CLASS --- */
+        .chart-options-sticky {
+            position: sticky;
+            top: 0;
+            z-index: 20; /* High z-index to stay on top */
+            background-color: var(--panel-bg); /* Match panel background */
+            /* Add a light shadow to show it's "above" the content */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+        }
+
 
         @media (max-width: 900px) {
             body { overflow: auto; }
@@ -154,6 +165,11 @@
             .controls-panel, .display-panel {
                 height: auto;
                 overflow-y: visible;
+            }
+            /* --- NEW: Disable sticky behavior on mobile --- */
+            .chart-options-sticky {
+                position: static;
+                box-shadow: none;
             }
         }
     </style>
@@ -207,7 +223,7 @@
         <div id="results"></div>
         <div id="error"></div>
         
-        <div class="input-group">
+        <div class="input-group chart-options-sticky">
             <h2>Chart Options</h2>
             <div class="chart-options">
                 <input type="checkbox" id="enableZoomCheck">
@@ -233,12 +249,12 @@
 
 
 <script>
+    // --- All JavaScript is unchanged from the previous version ---
+    
     let sfdChartInstance = null;
     let bmdChartInstance = null;
     const beamTypeSelect = document.getElementById('beamType');
     const beamLengthInput = document.getElementById('beamLength');
-    
-    // --- NEW: Grab the zoom checkbox ---
     const zoomCheck = document.getElementById('enableZoomCheck');
 
     beamTypeSelect.addEventListener('change', setupSupports);
@@ -248,7 +264,6 @@
         }
     });
 
-    // --- NEW: Add an event listener to the checkbox ---
     zoomCheck.addEventListener('change', () => {
         toggleZoom(zoomCheck.checked);
     });
@@ -261,7 +276,6 @@
         }
     }
     
-    // --- NEW: Function to instantly update chart zoom options ---
     function toggleZoom(isZoomEnabled) {
         if (sfdChartInstance) {
             sfdChartInstance.options.plugins.zoom.zoom.wheel.enabled = isZoomEnabled;
@@ -273,7 +287,6 @@
         }
     }
 
-    // ... (setupSupports, addLoad, drawBeam, drawArrow, calculate... all unchanged) ...
     function setupSupports() {
         const container = document.getElementById('supports-container');
         const beamType = beamTypeSelect.value;
@@ -286,6 +299,7 @@
                 <label for="support1">Support 1 Position (m)</label>
                 <input type="number" class="support-pos" id="support1" value="${s1}">
                 <label for="support2">Support 2 Position (m)</label>
+
                 <input type="number" class="support-pos" id="support2" value="${s2}">
             `;
         } else if (beamType === 'cantilever') {
@@ -529,8 +543,6 @@
         ));
     }
 
-    // This function is unchanged from the previous version,
-    // as it already reads the checkbox state.
     function createChartConfig(data, title, color, invertY = false, maxVal, minVal, pointLoadAnnotations) {
         
         const isZoomEnabled = document.getElementById('enableZoomCheck').checked;
